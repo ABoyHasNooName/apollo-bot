@@ -4,6 +4,40 @@ const { timeout, asyncForEach } = require('../utils');
 const octokit = require('@octokit/rest');
 const { getClient, getAllRepoNames } = require('../github');
 
+const relevantRepos = [
+  'apollo',
+  'apollo-android',
+  'apollo-angular',
+  'apollo-cache-asyncstorage',
+  'apollo-cache-control',
+  'apollo-cache-control-js',
+  'apollo-cache-persist',
+  'apollo-client',
+  'apollo-client-devtools',
+  'apollo-codegen',
+  'apollo-fetch',
+  'apollo-ios',
+  'apollo-link',
+  'apollo-link-state',
+  'apollo-server',
+  'community',
+  'docs-docs',
+  'engine-docs',
+  'eslint-plugin-graphql',
+  'GitHub-GraphQL-API-Example',
+  'GitHunt-API',
+  'GitHunt-Angular',
+  'GitHunt-React',
+  'graphql-tag',
+  'graphql-tools',
+  'launchpad',
+  'react-apollo',
+  'reason-apollo',
+  'subscriptions-transport-ws',
+  'vscode-graphql'
+];
+
+
 const apolloLabels = [
   {
     name: 'blocking',
@@ -23,12 +57,17 @@ const apolloLabels = [
   {
     name: 'feature',
     color: 'a2eeef',
-    description: 'Feature: new addition or enhancement to existing solutions',
+    description: 'New addition or enhancement to existing solutions',
   },
   {
     name: 'has-reproduction',
     color: '42f44e',
     description: '❤ Has a reproduction in a codesandbox or single minimal repository',
+  },
+  {
+    name: 'docs',
+    color: 'c2e0c6',
+    description: 'Focuses on documentation changes',
   },
 ]
 
@@ -67,8 +106,30 @@ async function syncLabels() {
   console.log('Fetching Repos');
   const repos = await getAllRepoNames(client);
 
+  let repoCheck;
+  if(process.env.NODE_ENV === 'production')
+  {
+    repoCheck = relevantRepos.filter( rr => repos.some(r => r === rr));
+    if(repoCheck.length !== relevantRepos.length)
+      throw new Error('Fetched repositories do not match currently relevant');
+  } else {
+    repoCheck = repos;
+  }
+
+  console.log('sorting repos by activity time')
+  const sorted = [];
+
+  await Promise.all(repoCheck.map(repo => (async () => {
+    const events = await client.activity.getEventsForRepo({ owner:'apollographql', repo });
+    if(events.data[0].created_at)
+      sorted.push({ repo, time: new Date(events.data[0].created_at) });
+  })()));
+
+  //sorted descending to retain activity history
+  sorted.sort(({time}, {time: time2}) => time - time2);
+
   console.log('Syncing Labels')
-  const creationJobs = repos.map(repo => ({
+  const creationJobs = sorted.map(({ repo }) => ({
     update: async () => createOrUpdateLabels(client, 'apollographql', repo),
     name: repo,
   }));
@@ -77,7 +138,7 @@ async function syncLabels() {
     console.log(`trying ${name}`);
     try{
       await update();
-      await timeout(100);
+      await timeout(1);
     } catch (e) {
       console.log(`failed ${name}`);
       console.error(e);
