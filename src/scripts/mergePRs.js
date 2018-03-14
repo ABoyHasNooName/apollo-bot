@@ -1,6 +1,7 @@
 require('dotenv').config()
 
-const { GithubAPI, getClient, getAllRepoNames } = require('../github');
+const { GithubAPI, getClient } = require('../github');
+const { getRepos } = require('./getRepos');
 const { timeout, asyncForEach } = require('../utils');
 
 async function mergePR(client, repo) {
@@ -37,7 +38,7 @@ async function mergePRs() {
   console.log('Authenticating Client');
   const client = await getClient();
   console.log('Fetching Repos');
-  const repos = await getAllRepoNames(client);
+  const repos = await getRepos({ client });
 
   console.log('Updating Templates');
   const mergeJobs = repos.map(repo => ({
@@ -48,7 +49,7 @@ async function mergePRs() {
   await asyncForEach(mergeJobs, async ({ name, update }) => {
     // console.log(`trying ${name}`);
     await update();
-    await timeout(10);
+    await timeout(1);
   });
 
   return;
